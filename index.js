@@ -41,7 +41,11 @@ const serverError = (res, label, error, message) => {
 // ---------- CORS ----------
 app.use(
   cors({
-    origin: CLIENT_URL.split(",").map((o) => o.trim()),
+    origin: [
+      "http://localhost:3000",
+      "https://wed-plan-client-site.vercel.app",
+    ],
+    methods: ["GET", "POST", "PATCH", "DELETE", "PUT"],
     credentials: true,
   }),
 );
