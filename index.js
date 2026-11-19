@@ -284,6 +284,59 @@ app.get("/services/:id", async (req, res) => {
   }
 });
 
+// Vendor Create Service API
+app.post("/services", verifyToken, verifyRole("vendor"), async (req, res) => {
+  try {
+    const { serviceName, category, description, price, location, images } =
+      req.body;
+
+    // Validate required fields
+    if (
+      !serviceName ||
+      !category ||
+      !description ||
+      price === undefined ||
+      !location
+    ) {
+      return res.status(400).send({
+        success: false,
+        message: "Please fill in all required fields!",
+      });
+    }
+
+    const servicesCollection = db.collection("services");
+
+    // Create new service
+    const newService = {
+      vendorId: req.user.id,
+      vendorName: req.user.email,
+      serviceName,
+      category,
+      description,
+      price: Number(price),
+      location,
+      images: Array.isArray(images) ? images : [],
+      status: "pending",
+      createdAt: new Date(),
+    };
+
+    const result = await servicesCollection.insertOne(newService);
+
+    res.status(201).send({
+      success: true,
+      message: "Service created successfully!",
+      serviceId: result.insertedId,
+    });
+  } catch (error) {
+    console.error("Create Service Error:", error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to create service!",
+    });
+  }
+});
+
 // Contact Form API
 app.post("/contact", async (req, res) => {
   try {
