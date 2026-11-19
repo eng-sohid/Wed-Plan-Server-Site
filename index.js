@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import "dotenv/config";
 import { MongoClient, ObjectId } from "mongodb";
+import { jwtVerify } from "jose";
 
 // Express App
 const app = express();
@@ -10,6 +11,112 @@ const port = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// JWT Verification Middleware
+async function verifyToken(req, res, next) {
+  try {
+    const authorization = req.headers.authorization;
+
+    // Check Authorization Header
+    if (!authorization || !authorization.startsWith("Bearer ")) {
+      return res.status(401).send({
+        success: false,
+        message: "Unauthorized! Token is required.",
+      });
+    }
+
+    const token = authorization.split(" ")[1];
+
+    const secret = process.env.JWT_SECRET;
+
+    if (!secret) {
+      throw new Error("JWT_SECRET is missing!");
+    }
+
+    // Verify JWT
+    const { payload } = await jwtVerify(
+      token,
+      new TextEncoder().encode(secret),
+      {
+        issuer: "wedplan-client",
+        audience: "wedplan-api",
+        algorithms: ["HS256"],
+      },
+    );
+
+    // Check user information
+    if (
+      !payload.sub ||
+      !["customer", "vendor", "admin"].includes(payload.role)
+    ) {
+      return res.status(401).send({
+        success: false,
+        message: "Invalid user information!",
+      });
+    }
+
+    // Attach authenticated user
+    req.user = {
+      id: payload.sub,
+      email: payload.email,
+      role: payload.role,
+    };
+
+    next();
+  } catch (error) {
+    return res.status(401).send({
+      success: false,
+      message: "Invalid or expired token!",
+    });
+  }
+}
+
+// Role Verification Middleware
+function verifyRole(...allowedRoles) {
+  return (req, res, next) => {
+    if (!req.user || !allowedRoles.includes(req.user.role)) {
+      return res.status(403).send({
+        success: false,
+        message: "Forbidden! You don't have permission.",
+      });
+    }
+
+    next();
+  };
+}
+
+// Get Logged-in Customer's Bookings
+app.get(
+  "/customer/bookings",
+  verifyToken,
+  verifyRole("customer"),
+  async (req, res) => {
+    try {
+      const bookingsCollection = db.collection("bookings");
+
+      // Fetch only logged-in customer's bookings
+      const bookings = await bookingsCollection
+        .find({
+          customerId: req.user.id,
+        })
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      res.status(200).send({
+        success: true,
+        totalBookings: bookings.length,
+        bookings,
+      });
+    } catch (error) {
+      console.error("Customer Bookings Error:", error);
+
+      res.status(500).send({
+        success: false,
+        message: "Failed to fetch bookings!",
+      });
+    }
+  },
+);
 
 // MongoDB Connection
 const client = new MongoClient(process.env.MONGODB_URI);
@@ -217,19 +324,19 @@ app.post("/contact", async (req, res) => {
 });
 
 // Wedding Service Booking API
-app.post("/bookings", async (req, res) => {
-  try {
-    const { serviceId, name, email, phone, weddingDate, message } = req.body;
 
-    // Check Required Fields
-    if (!serviceId || !name || !email || !phone || !weddingDate) {
+app.post("/bookings", verifyToken, verifyRole("customer"), async (req, res) => {
+  try {
+    const { serviceId, eventDate, eventLocation, message } = req.body;
+
+    // Validate required fields
+    if (!serviceId || !eventDate || !eventLocation) {
       return res.status(400).send({
         success: false,
         message: "Please fill in all required fields!",
       });
     }
 
-    // Check Service ID
     if (!ObjectId.isValid(serviceId)) {
       return res.status(400).send({
         success: false,
@@ -237,9 +344,10 @@ app.post("/bookings", async (req, res) => {
       });
     }
 
-    // Find Selected Service
     const servicesCollection = db.collection("services");
+    const bookingsCollection = db.collection("bookings");
 
+    // Find selected service
     const service = await servicesCollection.findOne({
       _id: new ObjectId(serviceId),
     });
@@ -251,17 +359,49 @@ app.post("/bookings", async (req, res) => {
       });
     }
 
-    // Booking Collection
-    const bookingsCollection = db.collection("bookings");
+    // Get vendor ID from service
+    const vendorId = service.vendorId?.toString();
 
-    // Save Booking Data
+    if (!vendorId) {
+      return res.status(400).send({
+        success: false,
+        message: "Vendor information is missing!",
+      });
+    }
+
+    // Prevent vendor from booking own service
+    if (vendorId === req.user.id) {
+      return res.status(403).send({
+        success: false,
+        message: "You cannot book your own service!",
+      });
+    }
+
+    // Check duplicate active booking
+    const existingBooking = await bookingsCollection.findOne({
+      serviceId: service._id,
+      customerId: req.user.id,
+      eventDate,
+      status: { $in: ["pending", "accepted"] },
+    });
+
+    if (existingBooking) {
+      return res.status(409).send({
+        success: false,
+        message: "You already have an active booking for this date!",
+      });
+    }
+
+    // Save booking
     const booking = {
       serviceId: service._id,
-      serviceTitle: service.title,
-      name,
-      email,
-      phone,
-      weddingDate,
+      serviceName: service.serviceName || service.title,
+      serviceImage: service.images?.[0] || service.image || "",
+      vendorId,
+      vendorName: service.vendorName || "",
+      customerId: req.user.id,
+      eventDate,
+      eventLocation,
       message: message || "",
       status: "pending",
       createdAt: new Date(),
