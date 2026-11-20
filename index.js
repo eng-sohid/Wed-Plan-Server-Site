@@ -39,7 +39,16 @@ const serverError = (res, label, error, message) => {
 };
 
 // ---------- CORS ----------
-
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "https://wed-plan-client-site.vercel.app",
+    ],
+    methods: ["GET", "POST", "PATCH", "DELETE", "PUT"],
+    credentials: true,
+  }),
+);
 // ---------- DB connection ----------
 async function ensureDb(req, res, next) {
   try {
