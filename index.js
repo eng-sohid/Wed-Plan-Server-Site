@@ -14,7 +14,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const client = new MongoClient(process.env.MONGODB_URI);
 let db;
 
-// ---------- Helpers ----------
+// ---------- Helpers --------------
 const escapeRegex = (s = "") => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const toObjectId = (id) => (ObjectId.isValid(id) ? new ObjectId(id) : null);
 const col = (name) => db.collection(name);
@@ -39,16 +39,6 @@ const serverError = (res, label, error, message) => {
 };
 
 // ---------- CORS ----------
-app.use(
-  cors({
-    origin: [
-      "http://localhost:3000",
-      "https://wed-plan-client-site.vercel.app",
-    ],
-    methods: ["GET", "POST", "PATCH", "DELETE", "PUT"],
-    credentials: true,
-  }),
-);
 
 // ---------- DB connection ----------
 async function ensureDb(req, res, next) {
