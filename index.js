@@ -452,6 +452,51 @@ function validateServiceBody(body) {
   }
   return null;
 }
+app.post("/services", ...vendorOnly, async (req, res) => {
+  try {
+    const error = validateServiceBody(req.body);
+    if (error) return fail(res, 400, error);
+
+    const vendor = req.user.doc;
+    if (!isPremium(vendor)) {
+      const count = await activeServiceCount(req.user.id);
+      if (count >= FREE_SERVICE_LIMIT) {
+        return fail(
+          res,
+          403,
+          "Free plan limit reached! Upgrade to Premium to publish more services.",
+          { code: "LIMIT_REACHED" },
+        );
+      }
+    }
+
+    const { serviceName, category, description, price, location, images } =
+      req.body;
+    const result = await col("services").insertOne({
+      vendorId: req.user.id,
+      vendorName: vendor.name,
+      vendorBusinessName: vendor.businessName || "",
+      vendorImage: vendor.image || "",
+      serviceName: serviceName.trim(),
+      category,
+      description: description.trim(),
+      price: Number(price),
+      location: location.trim(),
+      images,
+      status: "pending",
+      isActive: true,
+      createdAt: new Date(),
+    });
+
+    res.status(201).send({
+      success: true,
+      message: "Service submitted! Waiting for admin approval.",
+      serviceId: result.insertedId,
+    });
+  } catch (err) {
+    serverError(res, "Create Service Error:", err, "Failed to create service!");
+  }
+});
 
 app.get("/vendor/services", ...vendorOnly, async (req, res) => {
   try {
