@@ -281,23 +281,6 @@ app.post("/contact", async (req, res) => {
 });
 
 // ---------- Current user / Profile ----------
-app.get("/me", verifyToken, (req, res) => {
-  const u = req.user.doc;
-  res.send({
-    success: true,
-    user: {
-      id: String(u._id),
-      name: u.name,
-      email: u.email,
-      image: u.image || "",
-      role: u.role,
-      businessName: u.businessName || "",
-      phone: u.phone || "",
-      subscriptionPlan: isPremium(u) ? "premium" : "free",
-      subscriptionExpiresAt: u.subscriptionExpiresAt || null,
-    },
-  });
-});
 
 // Shudhu safe field: role / subscription / isBlocked kokhono accept kora hoy na
 app.patch("/me", verifyToken, async (req, res) => {
